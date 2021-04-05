@@ -66,6 +66,9 @@ class Graph:
         '''
         self._g.nodes[node].update(attrs)
 
+    def get_node_neighbors(self, node):
+        ''' Returns a list of neighboring nodes of the given node '''
+        return list(self._g.neighbors(node))
 
     def show(self):
         colors = [self.get_node_attrs(n)['color'] for n in self.get_nodes()]
@@ -80,4 +83,5 @@ if __name__=='__main__':
     print(f'Node 1 attrs: {g.get_node_attrs(1)}')
     g.set_node_attrs(1, {'color': 'red'})
     print(f'Node 1 attrs after set: {g.get_node_attrs(1)}')
+    print(f'Node 1 neighbors: {g.get_node_neighbors(1)}')
     g.show()
