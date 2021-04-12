@@ -16,6 +16,7 @@ class Graph:
     def __init__(self, n, p=0.1):
         self._n = n
         self._g = fast_gnp_random_graph(n, p)
+        self._pos = nx.drawing.spring_layout(self._g)
         for n in self._g.nodes:
             self._g.nodes[n]['color'] = 'grey'
 
@@ -71,9 +72,11 @@ class Graph:
         return list(self._g.neighbors(node))
 
     def show(self):
+        ''' Displays a plot of the graph '''
         colors = [self.get_node_attrs(n)['color'] for n in self.get_nodes()]
-        nx.draw_networkx(self._g, node_color=colors)
+        nx.draw_networkx(self._g, node_color=colors, pos=self._pos)
         plt.show()
+
 
 if __name__=='__main__':
     g = Graph(50)
