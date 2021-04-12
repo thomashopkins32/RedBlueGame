@@ -165,5 +165,5 @@ if __name__=='__main__':
     from agents import RandomAgent, TimeoutAgent
     game = Game(50, 10, 10)
     game.set_player(RandomAgent())
-    game.set_player(TimeoutAgent())
+    game.set_player(RandomAgent())
     game.run()
