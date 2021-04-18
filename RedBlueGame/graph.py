@@ -4,6 +4,7 @@ graph.py
 Includes Graph object for manipulating the networkx graph
 '''
 import networkx as nx
+import numpy as np
 from networkx.generators.random_graphs import fast_gnp_random_graph
 import matplotlib.pyplot as plt
 
@@ -19,6 +20,35 @@ class Graph:
         self._pos = nx.drawing.spring_layout(self._g)
         for n in self._g.nodes:
             self._g.nodes[n]['color'] = 'grey'
+
+    def to_numpy(self, color_pref='blue'):
+        '''
+        Converts the graph to an nxn adjacency matrix with color
+        info on the diagonal. Default conversion is (blue, red, grey) -> (1, -1, 0).
+        When color_pref is 'red' conversion is (blue, red, grey) -> (-1, 1, 0).
+        This could be useful for neural network input.
+
+        Parameters
+        ----------
+        color_pref : str, optional
+            color preference for diagonal values
+
+        Returns
+        -------
+        np.array
+            adjacency matrix with color info along the diagonal
+        '''
+        adj_matrix = nx.convert_matrix.to_numpy_array(self._g)
+        color_data = []
+        for n in self.get_nodes():
+            if self._g[n]['color'] == color_pref:
+                color_data.append(1)
+            elif self._g[n]['color'] == 'grey':
+                color_data.append(0)
+            else:
+                color_data.append(-1)
+        np.fill_diagonal(adj_matrix, color_data)
+        return adj_matrix
 
     def get_nodes(self, color=''):
         '''

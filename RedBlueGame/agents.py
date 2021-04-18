@@ -8,9 +8,12 @@ Note:
     All agent classes should inherit the Agent class.
 '''
 import numpy as np
+import torch
 
 import time
 import copy
+
+from models import DQN
 
 
 class Agent:
@@ -175,3 +178,36 @@ class MiniMaxAgent(Agent):
         if self.player == 'red':
             return red_count - blue_count
         return blue_count - red_count
+
+
+class DQNAgent(Agent):
+    '''
+    Agent that utilizes a Deep Q-Network to estimate the value
+    of state-action pairs
+
+    See train.py for training methods
+    See model.py for DQN neural network models
+
+    This Agent should load its learned state from a file
+    otherwise it will have random parameters.
+    '''
+    def __init__(self, n, network_param_file=''):
+        super(DQNAgent, self).__init__()
+        self.name = 'DQNAgent'
+        self.n = n
+        self.model = DQN(n)
+        if network_param_file != '':
+            self.load(network_param_file)
+
+    def get_action(self, state, player):
+        s = state.to_numpy(color_pref=player)
+        action_dist = self.model(s)
+        # get valid actions
+        possible_actions = state.get_nodes(color=player)
+        possible_action_dist = action_dist[possible_actions]
+        best_actions = np.argmax(possible_action_dist)
+        return best_actions[0]
+
+    def load(self, filepath):
+        checkpoint = torch.load(filepath)
+        self.model.load_state_dict(checkpoint['model_state_dict'])
