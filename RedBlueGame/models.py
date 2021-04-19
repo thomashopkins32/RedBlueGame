@@ -50,6 +50,7 @@ class DQN(nn.Module):
         self.conv2 = nn.Conv2d(4, 8, kernel_size=5, stride=1)
         self.bn2 = nn.BatchNorm2d(8)
         self.conv3 = nn.Conv2d(8, 1, kernel_size=5, stride=1)
+        self.bn3 = nn.BatchNorm2d(1)
 
         def conv2d_size_out(size, kernel_size=5, stride=1):
             return (size - (kernel_size - 1) - 1) // stride + 1

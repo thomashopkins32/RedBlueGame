@@ -198,15 +198,19 @@ class DQNAgent(Agent):
         self.model = DQN(n)
         if network_param_file != '':
             self.load(network_param_file)
+        self.model.eval()
+        for param in self.model.parameters():
+            param.requires_grad = False
 
     def get_action(self, state, player):
-        s = state.to_numpy(color_pref=player)
-        action_dist = self.model(s)
+        n = state._n
+        s = torch.tensor(state.to_numpy(color_pref=player)).reshape(1,1,n,n)
+        action_dist = self.model(s).numpy()[0]
         # get valid actions
-        possible_actions = state.get_nodes(color=player)
+        possible_actions = state.get_nodes(color='grey')
         possible_action_dist = action_dist[possible_actions]
-        best_actions = np.argmax(possible_action_dist)
-        return best_actions[0]
+        best_action = np.argmax(possible_action_dist)
+        return best_action
 
     def load(self, filepath):
         checkpoint = torch.load(filepath)

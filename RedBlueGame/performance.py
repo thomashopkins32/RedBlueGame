@@ -8,7 +8,7 @@ import sys
 import numpy as np
 from tqdm import tqdm
 
-from agents import RandomAgent, GreedyAgent, DifferenceAgent, MiniMaxAgent
+from agents import RandomAgent, GreedyAgent, DifferenceAgent, MiniMaxAgent, DQNAgent
 from game import Game
 
 # note: MiniMaxAgent is currently too slow to test
@@ -22,6 +22,8 @@ def assign_player(player):
         return DifferenceAgent()
     elif player == 'MiniMaxAgent':
         return MiniMaxAgent(depth=2)
+    elif player == 'DQNAgent':
+        return DQNAgent(51)
     return None
 
 num_games = int(sys.argv[1])

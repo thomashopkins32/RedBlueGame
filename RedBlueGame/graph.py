@@ -41,14 +41,14 @@ class Graph:
         adj_matrix = nx.convert_matrix.to_numpy_array(self._g)
         color_data = []
         for n in self.get_nodes():
-            if self._g[n]['color'] == color_pref:
-                color_data.append(1)
-            elif self._g[n]['color'] == 'grey':
-                color_data.append(0)
+            if self._g.nodes[n]['color'] == color_pref:
+                color_data.append(1.0)
+            elif self._g.nodes[n]['color'] == 'grey':
+                color_data.append(0.0)
             else:
-                color_data.append(-1)
+                color_data.append(-1.0)
         np.fill_diagonal(adj_matrix, color_data)
-        return adj_matrix
+        return adj_matrix.astype(np.float32)
 
     def get_nodes(self, color=''):
         '''

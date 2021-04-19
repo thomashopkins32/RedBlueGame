@@ -147,12 +147,12 @@ class Game:
                 self._print('Red player timed out! Red loses the game!')
                 return 'blue'
             self._print(f'Red player chose {red_action}')
-            self._print(f'Game after round {i+1}:')
-            if self.verbose:
-                self.state.show()
             if len(self.state.get_nodes(color='grey')) == 0:
                 self._print('All nodes have been colored.')
                 break
+            self._print(f'Game after round {i+1}:')
+            if self.verbose:
+                self.state.show()
             round_count += 1
         self._print('=====================================================================')
         self._print(f'Game has ended after {round_count} rounds')
@@ -168,12 +168,15 @@ class Game:
         else:
             self._print(f'Blue wins with scores {self.points}')
             winner = 'blue'
+        if self.verbose:
+            self.state.show()
         return winner
 
 
 if __name__=='__main__':
-    from agents import RandomAgent, TimeoutAgent, GreedyAgent, DifferenceAgent, MiniMaxAgent
-    game = Game(50, 10, 10)
+    from agents import (RandomAgent, TimeoutAgent, GreedyAgent,
+                        DifferenceAgent, MiniMaxAgent, DQNAgent)
+    game = Game(51, 10, 10)
     game.set_player(GreedyAgent())
-    game.set_player(RandomAgent())
+    game.set_player(DQNAgent(51))
     game.run()
