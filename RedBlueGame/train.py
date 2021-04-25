@@ -65,10 +65,10 @@ def optimize_model():
                                   device=device, dtype=torch.bool)
     non_final_next_states = torch.cat([s for s in batch.next_state if s is not None])
 
-    state_batch = torch.cat(batch.state)
-    action_batch = torch.cat(batch.action).view(-1,1)
-    reward_batch = torch.cat(batch.reward)
-    outs = policy_net(state_batch)
+    state_batch = torch.cat(batch.state).to(device)
+    action_batch = torch.cat(batch.action).view(-1,1).to(device)
+    reward_batch = torch.cat(batch.reward).to(device)
+    outs = policy_net(state_batch).to(device)
     # print(f'outs: {outs}')
     # colored_nodes = np.diagonal(state_batch, axis1=2, axis2=3).copy().reshape(-1, N)
     # print(f'colored: {colored_nodes}')
@@ -81,7 +81,7 @@ def optimize_model():
     # print(f'Q-values: {state_action_values}')
 
     next_state_values = torch.zeros(BATCH_SIZE, device=device)
-    target_outs = target_net(non_final_next_states)
+    target_outs = target_net(non_final_next_states).to(device)
     # print(f'targets: {target_outs}')
     # colored_next = np.diagonal(non_final_next_states, axis1=2, axis2=3).copy().reshape(-1,N)
     # invalid_next = colored_next.nonzero()
