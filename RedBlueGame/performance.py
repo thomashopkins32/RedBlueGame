@@ -23,7 +23,8 @@ def assign_player(player):
     elif player == 'MiniMaxAgent':
         return MiniMaxAgent(depth=2)
     elif player == 'DQNAgent':
-        return DQNAgent(51)
+        #return DQNAgent(51)
+        return DQNAgent(51, network_param_file='./saved_models/m_1000_random.pt')
     return None
 
 num_games = int(sys.argv[1])
