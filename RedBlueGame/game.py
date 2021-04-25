@@ -202,5 +202,5 @@ if __name__=='__main__':
                         DifferenceAgent, MiniMaxAgent, DQNAgent)
     game = Game(51, 10, 10)
     game.set_player(GreedyAgent())
-    game.set_player(DQNAgent(51, network_param_file='./saved_models/m_1000_random.pt'))
+    game.set_player(DQNAgent(51, network_param_file='./saved_models/m.pt'))
     game.run()

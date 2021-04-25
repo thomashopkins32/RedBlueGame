@@ -193,12 +193,13 @@ class DQNAgent(Agent):
     otherwise it will have random parameters.
     '''
     def __init__(self, n, network_param_file='', training=False, eps_end=0.05, eps_start=0.9,
-                 eps_decay=200):
+                 eps_decay=200, device='cpu'):
         super(DQNAgent, self).__init__()
         self.name = 'DQNAgent'
         self.n = n
-        self.model = DQN(n)
+        self.model = DQN(n).to(device)
         self.training = training
+        self.device = device
         if network_param_file != '':
             self.load(network_param_file)
         if not self.training:
@@ -213,7 +214,7 @@ class DQNAgent(Agent):
 
     def get_action(self, state, player):
         n = self.n
-        s = torch.tensor(state.to_numpy(color_pref=player)).reshape(1,1,n,n)
+        s = torch.tensor(state.to_numpy(color_pref=player), device=self.device).reshape(1,1,n,n)
         possible_actions = state.get_nodes(color='grey')
         # get valid actions
         if self.training:
@@ -221,25 +222,23 @@ class DQNAgent(Agent):
             eps_thresh = self.eps_end + (self.eps_start - self.eps_end) * \
                 math.exp(-1.0 * self.steps_done / self.eps_decay)
             self.steps_done += 1
-            if self.steps_done % 1000 == 0:
-                print(f'eps_thresh: {eps_thresh}')
             if sample > eps_thresh:
                 with torch.no_grad():
-                    action_dist = self.model(s).detach().numpy()[0]
+                    action_dist = self.model(s).detach()[0]
                     mask = np.ones(len(action_dist), np.bool)
                     mask[possible_actions] = 0
                     action_dist[mask] = float('-inf')
-                    action = np.argmax(action_dist)
+                    action = torch.argmax(action_dist).item()
             else:
                 action = np.random.choice(possible_actions)
         else:
-            action_dist = self.model(s).detach().numpy()[0]
+            action_dist = self.model(s).detach()[0]
             mask = np.ones(len(action_dist), np.bool)
             mask[possible_actions] = 0
             action_dist[mask] = float('-inf')
-            action = np.argmax(action_dist)
+            action = torch.argmax(action_dist).item()
         return action
 
     def load(self, filepath):
-        checkpoint = torch.load(filepath)
+        checkpoint = torch.load(filepath, map_location=torch.device(self.device))
         self.model.load_state_dict(checkpoint)
