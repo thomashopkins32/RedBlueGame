@@ -8,6 +8,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 import sys
 
@@ -18,16 +19,19 @@ from models import DQN, ReplayMemory, Transition
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 BATCH_SIZE = 128
-GAMMA = 0.5
-EPS_START = 0.99
+GAMMA = 0.99
+EPS_START = 0.9
 EPS_END = 0.1
-EPS_DECAY = 20000
+EPS_DECAY = 10000
 TARGET_UPDATE = 100
-
+I_EPISODE = 0
+LOSSES = []
+EPISODES = []
+REWARDS = []
 # number of game nodes
 N = 51
-NUM_EPISODES = 100000
-OPPONENT_TYPE = 'GreedyAgent'
+NUM_EPISODES = 1000
+OPPONENT_TYPE = 'random'
 
 agent = DQNAgent(N, training=True, eps_start=EPS_START, eps_end=EPS_END, eps_decay=EPS_DECAY, device=device)
 policy_net = agent.model.to(device)
@@ -35,7 +39,7 @@ target_net = DQN(N).to(device)
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
-optimizer = optim.RMSprop(policy_net.parameters())
+optimizer = optim.RMSprop(policy_net.parameters(), lr=0.00001)
 memory = ReplayMemory(100000)
 
 
@@ -72,12 +76,12 @@ def optimize_model():
     reward_batch = torch.cat(batch.reward).to(device)
     outs = policy_net(state_batch).to(device)
     # print(f'outs: {outs}')
-    colored_nodes = np.diagonal(state_batch, axis1=2, axis2=3).copy().reshape(-1, N)
+    #colored_nodes = np.diagonal(state_batch, axis1=2, axis2=3).copy().reshape(-1, N)
     # print(f'colored: {colored_nodes}')
-    colored_nodes[colored_nodes == -1] = 1
-    invalid_nodes = colored_nodes.nonzero()
+    #colored_nodes[colored_nodes == -1] = 1
+    #invalid_nodes = colored_nodes.nonzero()
     # print(f'invalid_nodes: {invalid_nodes}')
-    outs[invalid_nodes] = 0.0
+    #outs[invalid_nodes] = 0.0
     # print(f'outs after: {outs}')
     state_action_values = outs.gather(1, action_batch)
     # print(f'Q-values: {state_action_values}')
@@ -85,17 +89,19 @@ def optimize_model():
     next_state_values = torch.zeros(BATCH_SIZE, device=device)
     target_outs = target_net(non_final_next_states).to(device)
     # print(f'targets: {target_outs}')
-    colored_next = np.diagonal(non_final_next_states, axis1=2, axis2=3).copy().reshape(-1,N)
-    invalid_next = colored_next.nonzero()
+    #colored_next = np.diagonal(non_final_next_states, axis1=2, axis2=3).copy().reshape(-1,N)
+    #invalid_next = colored_next.nonzero()
     # print(f'invalid_next: {invalid_next}')
-    target_outs[invalid_next] = 0.0
+    # target_outs[invalid_next] = 0.0
     # print(f'target outs: {target_outs}')
     next_state_values[non_final_mask] = target_outs.max(1)[0].detach()
     # print(f'next state Q-values: {next_state_values}')
 
     expected_state_action_values = (next_state_values*GAMMA) + reward_batch
-
+    REWARDS.append(torch.mean(expected_state_action_values).item())
     loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+    LOSSES.append(loss.item())
+    EPISODES.append(I_EPISODE)
     optimizer.zero_grad()
     loss.backward()
     for param in policy_net.parameters():
@@ -103,7 +109,7 @@ def optimize_model():
     optimizer.step()
 
 num_won = 0
-for i_episode in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
+for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
     game = Game(N, 10, 10, verbose=False)
     opponent = select_opponent(OPPONENT_TYPE)
     player = 'blue'
@@ -133,14 +139,15 @@ for i_episode in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
                 action = red_action
         if reward_dict[result] == 1:
             num_won += 1
-        red_nodes = len(game.state.get_nodes(color='red'))
-        blue_nodes = len(game.state.get_nodes(color='blue'))
-        if player == 'blue':
-            reward = blue_nodes - red_nodes
-        elif player == 'red':
-            reward = red_nodes - blue_nodes
-        if result == 'red' or result == 'blue':
-            reward *= 2 # triple reward for winnning
+        reward = reward_dict[result]
+        #red_nodes = len(game.state.get_nodes(color='red'))
+        #blue_nodes = len(game.state.get_nodes(color='blue'))
+        #if player == 'blue':
+         #   reward = blue_nodes - red_nodes
+        #elif player == 'red':
+        #    reward = red_nodes - blue_nodes
+        #if result == 'red' or result == 'blue':
+        #    reward *= 2 # triple reward for winnning
         reward = torch.tensor([reward], device=device)
         action = torch.tensor([[action]], device=device)
         # observe new state
@@ -155,7 +162,15 @@ for i_episode in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
         # optimize for one step
         optimize_model()
     # update target network
-    if i_episode % TARGET_UPDATE == 0:
+    if I_EPISODE % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
 print(num_won)
+
 torch.save(policy_net.state_dict(), sys.argv[1])
+plt.plot(EPISODES, LOSSES)
+plt.show()
+plt.savefig('losses.png')
+plt.close()
+plt.plot(EPISODES, REWARDS)
+plt.show()
+plt.savefig('rewards.png')
