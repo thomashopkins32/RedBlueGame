@@ -6,40 +6,48 @@ Module for different agent learning algorithms.
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
+import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
+import copy
 import sys
 
 from agents import GreedyAgent, DifferenceAgent, RandomAgent, DQNAgent
 from game import Game
-from models import DQN, ReplayMemory, Transition
+from models import DQN, DQFFN, ReplayMemory, Transition
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 BATCH_SIZE = 128
-GAMMA = 0.99
+GAMMA = 0.5
 EPS_START = 0.9
-EPS_END = 0.1
+EPS_END = 0.05
 EPS_DECAY = 10000
-TARGET_UPDATE = 100
+TARGET_UPDATE = 5000
 I_EPISODE = 0
 LOSSES = []
 EPISODES = []
 REWARDS = []
 # number of game nodes
 N = 51
-NUM_EPISODES = 1000
-OPPONENT_TYPE = 'random'
+NUM_EPISODES = 100000
+OPPONENT_TYPE = 'GreedyAgent'
 
-agent = DQNAgent(N, training=True, eps_start=EPS_START, eps_end=EPS_END, eps_decay=EPS_DECAY, device=device)
+NETWORK = 'ffn'
+agent = DQNAgent(N, training=True, eps_start=EPS_START, eps_end=EPS_END, eps_decay=EPS_DECAY, 
+                 device=device, model=NETWORK)
 policy_net = agent.model.to(device)
-target_net = DQN(N).to(device)
+target_net = None
+if NETWORK == 'ffn':
+    target_net = DQFFN(N).to(device)
+else:
+    target_net = DQN(N).to(device)
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
-optimizer = optim.RMSprop(policy_net.parameters(), lr=0.00001)
+optimizer = optim.RMSprop(policy_net.parameters(), lr=0.001)
 memory = ReplayMemory(100000)
 
 
@@ -99,7 +107,9 @@ def optimize_model():
 
     expected_state_action_values = (next_state_values*GAMMA) + reward_batch
     REWARDS.append(torch.mean(expected_state_action_values).item())
-    loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+    bn = nn.BatchNorm1d(1, track_running_stats=False)
+    expected_state_action_values = bn(expected_state_action_values.unsqueeze(1))
+    loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
     LOSSES.append(loss.item())
     EPISODES.append(I_EPISODE)
     optimizer.zero_grad()

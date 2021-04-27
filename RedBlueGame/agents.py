@@ -15,7 +15,7 @@ import time
 import copy
 import math
 
-from models import DQN
+from models import DQN, DQFFN
 
 
 class Agent:
@@ -194,11 +194,15 @@ class DQNAgent(Agent):
     otherwise it will have random parameters.
     '''
     def __init__(self, n, network_param_file='', training=False, eps_end=0.05, eps_start=0.9,
-                 eps_decay=200, device='cpu'):
+                 eps_decay=200, device='cpu', model='ffn'):
         super(DQNAgent, self).__init__()
         self.name = 'DQNAgent'
         self.n = n
-        self.model = DQN(n).to(device)
+        self.model = None
+        if model == 'ffn':
+            self.model = DQFFN(n).to(device)
+        else:
+            self.model = DQN(n).to(device)
         self.training = training
         self.device = device
         if network_param_file != '':

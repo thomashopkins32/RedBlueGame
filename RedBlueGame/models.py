@@ -60,3 +60,23 @@ class DQN(nn.Module):
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.relu(self.bn2(self.conv2(x)))
         return self.l1(x.view(x.size(0), -1))
+
+
+class DQFFN(nn.Module):
+    def __init__(self, n):
+        '''
+        Create Feed-forward Network with n dim input and n dim output
+        '''
+        super(DQFFN, self).__init__()
+        self.n = n
+        self.l1 = nn.Linear(n*n, 1024)
+        #self.bn1 = nn.BatchNorm1d(128)
+        self.l2 = nn.Linear(1024, 512)
+        #self.bn2 = nn.BatchNorm1d(64)
+        self.l3 = nn.Linear(512, n)
+    
+    def forward(self, x):
+        x = x.reshape(x.size(0), self.n*self.n)
+        x = F.relu(self.l1(x))
+        x = F.relu(self.l2(x))
+        return self.l3(x)
