@@ -69,11 +69,11 @@ class DQFFN(nn.Module):
         '''
         super(DQFFN, self).__init__()
         self.n = n
-        self.l1 = nn.Linear(n*n, 1024)
+        self.l1 = nn.Linear(n*n, 256)
         #self.bn1 = nn.BatchNorm1d(128)
-        self.l2 = nn.Linear(1024, 512)
+        self.l2 = nn.Linear(256, 128)
         #self.bn2 = nn.BatchNorm1d(64)
-        self.l3 = nn.Linear(512, n)
+        self.l3 = nn.Linear(128, n)
     
     def forward(self, x):
         x = x.reshape(x.size(0), self.n*self.n)
