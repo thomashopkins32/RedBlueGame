@@ -200,7 +200,8 @@ class Game:
 if __name__=='__main__':
     from agents import (RandomAgent, TimeoutAgent, GreedyAgent,
                         DifferenceAgent, MiniMaxAgent, DQNAgent)
-    game = Game(51, 10, 10)
+    n = int(sys.argv[1])
+    game = Game(n, 10, 10)
     game.set_player(GreedyAgent())
-    game.set_player(DQNAgent(51, network_param_file='./saved_models/m.pt'))
+    game.set_player(DQNAgent(n, network_param_file=sys.argv[2]))
     game.run()

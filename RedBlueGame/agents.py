@@ -15,7 +15,7 @@ import time
 import copy
 import math
 
-from models import DQN, DQFFN
+from models import DQFFN
 
 
 class Agent:
@@ -198,11 +198,7 @@ class DQNAgent(Agent):
         super(DQNAgent, self).__init__()
         self.name = 'DQNAgent'
         self.n = n
-        self.model = None
-        if model == 'ffn':
-            self.model = DQFFN(n).to(device)
-        else:
-            self.model = DQN(n).to(device)
+        self.model = DQFFN(n).to(device)
         self.training = training
         self.device = device
         if network_param_file != '':
@@ -219,7 +215,7 @@ class DQNAgent(Agent):
 
     def get_action(self, state, player):
         n = self.n
-        s = torch.tensor(state.to_numpy(color_pref=player), device=self.device).reshape(1,1,n,n)
+        s = torch.tensor(state.to_numpy(color_pref=player), device=self.device).unsqueeze(0)
         possible_actions = state.get_nodes(color='grey')
         # get valid actions
         if self.training:

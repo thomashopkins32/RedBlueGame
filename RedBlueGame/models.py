@@ -38,30 +38,6 @@ class ReplayMemory:
         return len(self.memory)
 
 
-class DQN(nn.Module):
-    def __init__(self, n):
-        '''
-        Create CNN initially random with nxn input tensor
-        and n dim output tensor.
-        '''
-        super(DQN, self).__init__()
-        self.conv1 = nn.Conv2d(1, 4, kernel_size=5, stride=1)
-        self.bn1 = nn.BatchNorm2d(4)
-        self.conv2 = nn.Conv2d(4, 8, kernel_size=5, stride=1)
-        self.bn2 = nn.BatchNorm2d(8)
-
-        def conv2d_size_out(size, kernel_size=5, stride=1):
-            return (size - (kernel_size - 1) - 1) // stride + 1
-        convn = conv2d_size_out(conv2d_size_out(n))
-        linear_input_size = convn*convn*8
-        self.l1 = nn.Linear(linear_input_size, n)
-
-    def forward(self, x):
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        return self.l1(x.view(x.size(0), -1))
-
-
 class DQFFN(nn.Module):
     def __init__(self, n):
         '''
@@ -69,14 +45,21 @@ class DQFFN(nn.Module):
         '''
         super(DQFFN, self).__init__()
         self.n = n
-        self.l1 = nn.Linear(n*n, 256)
+        # input is flattened upper triangle (diagonal included) of
+        # state adjacency matrix
+        self.l1 = nn.Linear(n*(n+1)//2, 256)
         #self.bn1 = nn.BatchNorm1d(128)
         self.l2 = nn.Linear(256, 128)
         #self.bn2 = nn.BatchNorm1d(64)
         self.l3 = nn.Linear(128, n)
-    
+
     def forward(self, x):
-        x = x.reshape(x.size(0), self.n*self.n)
+        '''
+        input is of shape (batch_size, n, n)
+        '''
+        # convert upper triangle + diagonal to flat tensor
+        upper_indices = torch.triu_indices(self.n, self.n)
+        x = x[:, upper_indices[0], upper_indices[1]]
         x = F.relu(self.l1(x))
         x = F.relu(self.l2(x))
         return self.l3(x)
