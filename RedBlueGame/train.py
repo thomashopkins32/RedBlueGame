@@ -24,21 +24,21 @@ from game import Game
 from models import DQFFN, ReplayMemory, Transition
 
 
-DEBUG_MODE = False
+DEBUG_MODE = True
 if DEBUG_MODE:
-    DEBUG_OFFSET = 100
+    DEBUG_OFFSET = 10000
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # HYPERPARAMETERS
 BATCH_SIZE = 256    # sampling size from replay memory
-GAMMA = 0.5         # discount factor for estimated future rewards
+GAMMA = 0.99         # discount factor for estimated future rewards
 EPS_START = 0.9     # starting exploration probability
-EPS_END = 0.05      # ending exploration probability
-EPS_DECAY = 1000     # rate of decay of exploration probability
+EPS_END = 0.01      # ending exploration probability
+EPS_DECAY = 20000     # rate of decay of exploration probability
 TARGET_UPDATE = 1000 # number of episodes between target network update
 I_EPISODE = 0       # current episode number
-NUM_EPISODES = 10000 # number of games to learn from
+NUM_EPISODES = 100000 # number of games to learn from
 N = 51               # number of nodes in the game graph
 OPPONENT_TYPE = 'RandomAgent' # opponent to play against TODO: implement 'self'
 MEMORY_SIZE = 10000 # size of replay memory
@@ -48,6 +48,7 @@ LEARNING_RATE = 0.001 # learning rate for optimizer
 EPISODES = []
 LOSSES = []
 AVG_EXPECTED_REWARDS = []
+REWARDS = []
 
 def select_opponent(op_type):
     if op_type == 'random':
@@ -68,7 +69,7 @@ def select_opponent(op_type):
 
 
 # define agents and networks
-agent = DQNAgent(N, training=True, eps_start=EPS_START, eps_end=EPS_END, eps_decay=EPS_DECAY)
+agent = DQNAgent(N, training=True, eps_start=EPS_START, eps_end=EPS_END, eps_decay=EPS_DECAY, device=device)
 policy_net = agent.model.to(device)
 target_net = DQFFN(N).to(device)
 target_net.load_state_dict(policy_net.state_dict())
@@ -179,7 +180,7 @@ def optimize_model():
         print(f'DEBUG: expected_state_action_values shape: {expected_state_action_values.shape}')
         print(f'DEBUG: expected_state_action_values[0]: {expected_state_action_values[0]}')
         assert expected_state_action_values.shape == (BATCH_SIZE,)
-    AVG_EXPECTED_REWARDS.append(torch.mean(expected_state_action_values, 0))
+    AVG_EXPECTED_REWARDS.append(torch.mean(expected_state_action_values, 0).item())
     # calculate the temporal difference (TD) error
     loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
     if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
@@ -198,15 +199,16 @@ def optimize_model():
     for param in policy_net.parameters():
         param.grad.data.clamp_(-1, 1)
     optimizer.step()
-
+    '''
     if DEBUG_MODE:
         # did parameters change?
         new_params = [param for param in policy_net.parameters()]
         for i in range(len(new_params)):
             assert not torch.equal(new_params[i], old_params[i])
-
+    '''
 
 # training loop
+accumulated_reward = 0
 for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
 
     # create new game and opponent
@@ -227,6 +229,7 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
 
     # set up states and next states
     state = torch.tensor(game.state.to_numpy(color_pref=player), device=device).unsqueeze(0)
+    prev_state = state
     next_state = None
     while result == 'continue':
         # take a step of the game
@@ -235,8 +238,10 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
             action = blue_action
         else:
             # red_action could be -1 if all nodes are colored
-            # before red gets to select (just keep previous action)
-            if red_action != -1:
+            # before red gets to select (just keep previous action and rollback state)
+            if red_action == -1:
+                state = prev_state
+            else:
                 action = red_action
         # get immediate reward
         reward = 0.0
@@ -247,8 +252,17 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
                 reward = blue_nodes - red_nodes
             elif player == 'red':
                 reward = red_nodes - blue_nodes
+        accumulated_reward += reward
         # convert to tensors
         reward = torch.tensor([reward], device=device)
+        if DEBUG_MODE:
+            invalid_actions = torch.diagonal(state, dim1=1, dim2=2).nonzero()[:,1]
+            if I_EPISODE % DEBUG_OFFSET == 0:
+                print(f'DEBUG: player: {player}')
+                print(f'DEBUG: state: {state}')
+                print(f'DEBUG: action taken: {action}')
+                print(f'DEBUG: invalid_actions: {invalid_actions}')
+            assert not action in invalid_actions
         if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
             print(f'DEBUG: player: {player}')
             print(f'DEBUG: reward shape: {reward.shape}')
@@ -292,6 +306,7 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
         memory.push(state, action, next_state, reward)
 
         # move to next state
+        prev_state = state
         state = next_state
 
         # optimize for one step
@@ -302,6 +317,11 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
     # update target network
     if I_EPISODE % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
+
+    # add accumulated reward for 100 episodes
+    if I_EPISODE % 100 == 0:
+        REWARDS.append(accumulated_reward)
+        accumulated_reward = 0
 
 # save model + statistics
 header = f'n{N}-ep{NUM_EPISODES}-op{OPPONENT_TYPE}'
@@ -318,5 +338,10 @@ plt.ylabel('Avg Expected Reward')
 plt.title('Average Expected Reward over Episodes')
 plt.savefig(f'./analysis/e-reward-{header}.png')
 plt.close()
-
-
+every_100 = np.linspace(0, NUM_EPISODES, num=len(REWARDS))
+plt.plot(every_100, REWARDS)
+plt.xlabel('Episodes')
+plt.ylabel('Accumulated Reward')
+plt.title('Accumulated Reward per 100 Episodes')
+plt.savefig(f'./analysis/a-reward-{header}.png')
+plt.close()

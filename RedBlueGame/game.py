@@ -31,16 +31,16 @@ from graph import Graph
 
 class TimeoutException(Exception): pass
 
-@contextmanager
-def time_limit(seconds):
-    def signal_handler(signum, frame):
-        raise TimeoutException('Timed out!')
-    signal.signal(signal.SIGALRM, signal_handler)
-    signal.alarm(seconds)
-    try:
-        yield
-    finally:
-        signal.alarm(0)
+#@contextmanager
+#def time_limit(seconds):
+#    def signal_handler(signum, frame):
+#        raise TimeoutException('Timed out!')
+#    signal.signal(signal.SIGALRM, signal_handler)
+#    signal.alarm(seconds)
+#    try:
+#        yield
+#    finally:
+#        signal.alarm(0)
 
 
 class Game:
@@ -143,8 +143,8 @@ class Game:
         '''
         self._print(f'Blue player {self.players["blue"]} is choosing a node to color')
         try:
-            with time_limit(self.t):
-                blue_action = self.players['blue'].get_action(self.state, 'blue')
+            #with time_limit(self.t):
+            blue_action = self.players['blue'].get_action(self.state, 'blue')
             self.perform_action('blue', blue_action)
         except TimeoutException as e:
             self._print('Blue player timed out! Blue loses the game!')
@@ -155,8 +155,8 @@ class Game:
             return blue_action, -1, self.determine_winner()
         self._print(f'Red player {self.players["red"]} is choosing a node to color')
         try:
-            with time_limit(self.t):
-                red_action = self.players['red'].get_action(self.state, 'red')
+            #with time_limit(self.t):
+            red_action = self.players['red'].get_action(self.state, 'red')
             self.perform_action('red', red_action)
         except TimeoutException as e:
             self._print('Red player timed out! Red loses the game!')
