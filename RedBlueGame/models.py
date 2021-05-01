@@ -47,11 +47,11 @@ class DQFFN(nn.Module):
         self.n = n
         # input is flattened upper triangle (diagonal included) of
         # state adjacency matrix
-        self.l1 = nn.Linear(n*(n+1)//2, 256)
+        self.l1 = nn.Linear(n*(n+1)//2, 16)
         #self.bn1 = nn.BatchNorm1d(128)
-        self.l2 = nn.Linear(256, 128)
+        self.l2 = nn.Linear(16, 8)
         #self.bn2 = nn.BatchNorm1d(64)
-        self.l3 = nn.Linear(128, n)
+        self.l3 = nn.Linear(8, n)
 
     def forward(self, x):
         '''

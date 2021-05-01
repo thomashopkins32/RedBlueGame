@@ -24,9 +24,9 @@ from game import Game
 from models import DQFFN, ReplayMemory, Transition
 
 
-DEBUG_MODE = False
+DEBUG_MODE = True
 if DEBUG_MODE:
-    DEBUG_OFFSET = 10000
+    DEBUG_OFFSET = 1000
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -35,14 +35,15 @@ BATCH_SIZE = 256    # sampling size from replay memory
 GAMMA = 0.8         # discount factor for estimated future rewards
 EPS_START = 1.0     # starting exploration probability
 EPS_END = 0.01      # ending exploration probability
-EPS_DECAY = 70000     # rate of decay of exploration probability
-TARGET_UPDATE = 1000 # number of episodes between target network update
+EPS_DECAY = 7500     # rate of decay of exploration probability
+TARGET_UPDATE = 500 # number of episodes between target network update
 I_EPISODE = 0       # current episode number
-NUM_EPISODES = 700000 # number of games to learn from
+NUM_EPISODES = 100000 # number of games to learn from
 N = 31               # number of nodes in the game graph
-OPPONENT_TYPE = 'random' # opponent to play against TODO: implement 'self'
-MEMORY_SIZE = 25000 # size of replay memory
+OPPONENT_TYPE = 'GreedyAgent' # opponent to play against TODO: implement 'self'
+MEMORY_SIZE = 80000 # size of replay memory
 LEARNING_RATE = 0.001 # learning rate for optimizer
+DOUBLE_DQN = True     # use Double DQN target (reduces overestimation bias)
 
 # Statistics
 EPISODES = []
@@ -141,11 +142,19 @@ def optimize_model():
 
     # get target Q-values of next state
     next_state_values = torch.zeros(BATCH_SIZE, device=device)
+    # select action according to policy network
+    if DOUBLE_DQN:
+        next_preds = policy_net(non_final_next_states).to(device)
     targets = target_net(non_final_next_states).to(device)
     if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
         print(f'DEBUG: targets shape: {targets.shape}')
         print(f'DEBUG: targets[0]: {targets[0]}')
         assert targets.shape == (torch.count_nonzero(non_final_mask), N)
+        if DOUBLE_DQN:
+            print(f'DEBUG: next_preds shape: {next_preds.shape}')
+            print(f'DEBUG: next_preds[0]: {next_preds[0]}')
+            assert next_preds.shape == (torch.count_nonzero(non_final_mask), N)
+
 
     # determine which next actions are invalid
     invalid_actions = torch.diagonal(non_final_next_states, dim1=1, dim2=2).clone().view(-1,N)
@@ -168,7 +177,10 @@ def optimize_model():
         assert targets.shape == (torch.count_nonzero(non_final_mask), N)
 
     # get the optimisitc Q-value for the next best action in non-final states
-    next_state_values[non_final_mask] = targets.max(1)[0].detach()
+    if DOUBLE_DQN:
+        next_state_values[non_final_mask] = targets[:, next_preds.argmax(dim=1)[0]]
+    else:
+        next_state_values[non_final_mask] = targets.max(1)[0].detach()
     if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
         print(f'DEBUG: next_state_action_values shape: {next_state_values.shape}')
         print(f'DEBUG: next_state_action_values[0]: {next_state_values[0]}')
@@ -199,13 +211,6 @@ def optimize_model():
     for param in policy_net.parameters():
         param.grad.data.clamp_(-1, 1)
     optimizer.step()
-    '''
-    if DEBUG_MODE:
-        # did parameters change?
-        new_params = [param for param in policy_net.parameters()]
-        for i in range(len(new_params)):
-            assert not torch.equal(new_params[i], old_params[i])
-    '''
 
 # training loop
 accumulated_reward = 0
@@ -217,25 +222,35 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
 
     # assign red/blue randomly
     player = ''
+    opp_color = ''
     if np.random.rand() < 0.5:
         game.set_player(agent) # red player
         game.set_player(opponent) # blue player
         player = 'red'
+        opp_color = 'blue'
     else:
         game.set_player(opponent)
         game.set_player(agent)
         player = 'blue'
+        opp_color = 'red'
     result = 'continue'
 
     # set up states and next states
     state = torch.tensor(game.state.to_numpy(color_pref=player), device=device).unsqueeze(0)
+    mirror_state = torch.tensor(game.state.to_numpy(color_pref=opp_color), device=device).unsqueeze(0)
     prev_state = state
+    mirror_prev_state = mirror_state
     next_state = None
+    mirror_next_state = None
     while result == 'continue':
         # take a step of the game
         blue_action, red_action, result = game.step()
         if player == 'blue':
             action = blue_action
+            if red_action == -1:
+                mirror_state = mirror_prev_state
+            else:
+                mirror_action = red_action
         else:
             # red_action could be -1 if all nodes are colored
             # before red gets to select (just keep previous action and rollback state)
@@ -243,6 +258,7 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
                 state = prev_state
             else:
                 action = red_action
+            mirror_action = blue_action
         # get immediate reward
         reward = 0.0
         if result == 'red' or result == 'blue':
@@ -253,8 +269,10 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
             elif player == 'red':
                 reward = red_nodes - blue_nodes
         accumulated_reward += reward
+        mirror_reward = -reward
         # convert to tensors
         reward = torch.tensor([reward], device=device)
+        mirror_reward = torch.tensor([mirror_reward], device=device)
         if DEBUG_MODE:
             invalid_actions = torch.diagonal(state, dim1=1, dim2=2).nonzero()[:,1]
             if I_EPISODE % DEBUG_OFFSET == 0:
@@ -270,6 +288,7 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
             assert reward.shape == (1,)
 
         action = torch.tensor([[action]], device=device, dtype=torch.int64)
+        mirror_action = torch.tensor([[mirror_action]], device=device, dtype=torch.int64)
         if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
             print(f'DEBUG: action shape: {action.shape}')
             print(f'DEBUG: action[0]: {action[0]}')
@@ -282,12 +301,16 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
         # steps of training) i.e. only use for I_EPISODE < NUM_EPISODES//2
         # this can also be tuned
 
+
         # observe new state
         if result == 'continue':
             next_state = torch.tensor(game.state.to_numpy(color_pref=player),
                                       device=device).unsqueeze(0)
+            mirror_next_state = torch.tensor(game.state.to_numpy(color_pref=opp_color),
+                                             device=device).unsqueeze(0)
         else:
             next_state = None
+            mirror_next_state = None
         if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
             print(f'DEBUG: state shape: {state.shape}')
             print(f'DEBUG: state: {state}')
@@ -304,10 +327,12 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
 
         # add transition to replay memory
         memory.push(state, action, next_state, reward)
-
+        memory.push(mirror_state, mirror_action, mirror_next_state, mirror_reward)
         # move to next state
         prev_state = state
         state = next_state
+        mirror_prev_state = mirror_state
+        mirror_state = mirror_next_state
 
         # optimize for one step
         optimize_model()
@@ -324,7 +349,10 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
         accumulated_reward = 0
 
 # save model + statistics
-header = f'n{N}-ep{NUM_EPISODES}-op{OPPONENT_TYPE}'
+if DOUBLE_DQN:
+    header = f'n{N}-ep{NUM_EPISODES}-op{OPPONENT_TYPE}-ddqn'
+else:
+    header = f'n{N}-ep{NUM_EPISODES}-op{OPPONENT_TYPE}'
 torch.save(policy_net.state_dict(), f'./saved_models/model-{header}.pt')
 plt.plot(EPISODES, LOSSES)
 plt.xlabel('Episodes')
