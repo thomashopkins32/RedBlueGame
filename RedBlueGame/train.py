@@ -24,7 +24,7 @@ from game import Game
 from models import DQFFN, ReplayMemory, Transition
 
 
-DEBUG_MODE = True
+DEBUG_MODE = False
 if DEBUG_MODE:
     DEBUG_OFFSET = 10000
 
@@ -32,16 +32,16 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # HYPERPARAMETERS
 BATCH_SIZE = 256    # sampling size from replay memory
-GAMMA = 0.99         # discount factor for estimated future rewards
-EPS_START = 0.9     # starting exploration probability
+GAMMA = 0.8         # discount factor for estimated future rewards
+EPS_START = 1.0     # starting exploration probability
 EPS_END = 0.01      # ending exploration probability
-EPS_DECAY = 20000     # rate of decay of exploration probability
+EPS_DECAY = 70000     # rate of decay of exploration probability
 TARGET_UPDATE = 1000 # number of episodes between target network update
 I_EPISODE = 0       # current episode number
-NUM_EPISODES = 100000 # number of games to learn from
-N = 51               # number of nodes in the game graph
-OPPONENT_TYPE = 'RandomAgent' # opponent to play against TODO: implement 'self'
-MEMORY_SIZE = 10000 # size of replay memory
+NUM_EPISODES = 700000 # number of games to learn from
+N = 31               # number of nodes in the game graph
+OPPONENT_TYPE = 'random' # opponent to play against TODO: implement 'self'
+MEMORY_SIZE = 25000 # size of replay memory
 LEARNING_RATE = 0.001 # learning rate for optimizer
 
 # Statistics
@@ -269,7 +269,7 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
             print(f'DEBUG: reward[0]: {reward[0]}')
             assert reward.shape == (1,)
 
-        action = torch.tensor([[action]], device=device)
+        action = torch.tensor([[action]], device=device, dtype=torch.int64)
         if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
             print(f'DEBUG: action shape: {action.shape}')
             print(f'DEBUG: action[0]: {action[0]}')
