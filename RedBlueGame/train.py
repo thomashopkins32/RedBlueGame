@@ -26,23 +26,23 @@ from models import DQFFN, ReplayMemory, Transition
 
 DEBUG_MODE = True
 if DEBUG_MODE:
-    DEBUG_OFFSET = 1000
+    DEBUG_OFFSET = 1500
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # HYPERPARAMETERS
-BATCH_SIZE = 256    # sampling size from replay memory
-GAMMA = 0.8         # discount factor for estimated future rewards
-EPS_START = 1.0     # starting exploration probability
-EPS_END = 0.01      # ending exploration probability
-EPS_DECAY = 7500     # rate of decay of exploration probability
-TARGET_UPDATE = 500 # number of episodes between target network update
+BATCH_SIZE = 512    # sampling size from replay memory
+GAMMA = 0.7         # discount factor for estimated future rewards
+EPS_START = 0.99     # ftarting exploration probability
+EPS_END = 0.1      # ending exploration probability
+EPS_DECAY = 250000     # rate of linear decay of exploration probability
+TARGET_UPDATE = 2000 # number of episodes between target network update
 I_EPISODE = 0       # current episode number
-NUM_EPISODES = 100000 # number of games to learn from
+NUM_EPISODES = 50000 # number of games to learn from
 N = 31               # number of nodes in the game graph
-OPPONENT_TYPE = 'GreedyAgent' # opponent to play against TODO: implement 'self'
-MEMORY_SIZE = 80000 # size of replay memory
-LEARNING_RATE = 0.001 # learning rate for optimizer
+OPPONENT_TYPE = 'RandomAgent' # opponent to play against TODO: implement 'self'
+MEMORY_SIZE = 500000 # size of replay memory
+LEARNING_RATE = 0.0001 # learning rate for optimizer
 DOUBLE_DQN = True     # use Double DQN target (reduces overestimation bias)
 
 # Statistics
@@ -66,6 +66,13 @@ def select_opponent(op_type):
         return DifferenceAgent()
     elif op_type == 'RandomAgent':
         return RandomAgent()
+    elif op_type == 'order':
+        if I_EPISODE < NUM_EPISODES // 3:
+            return RandomAgent()
+        elif I_EPISODE < 2*NUM_EPISODES // 3:
+            return DifferenceAgent()
+        else:
+            return GreedyAgent()
     return None
 
 
@@ -171,20 +178,31 @@ def optimize_model():
 
     # make it so the network never chooses the invalid action (max operation is performed next)
     targets[invalid_indices[:,0], invalid_indices[:,1]] = float('-inf')
+    if DOUBLE_DQN:
+        next_preds[invalid_indices[:,0], invalid_indices[:,1]] = float('-inf')
     if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
         print(f'DEBUG: targets after invalid shape: {targets.shape}')
         print(f'DEBUG: targets after invalid [0]: {targets[0]}')
         assert targets.shape == (torch.count_nonzero(non_final_mask), N)
+        if DOUBLE_DQN:
+            print(f'DEBUG: next_preds after invalid shape: {next_preds.shape}')
+            print(f'DEBUG: next_preds after invalid [0]: {next_preds[0]}')
+            assert targets.shape == (torch.count_nonzero(non_final_mask), N)
+
 
     # get the optimisitc Q-value for the next best action in non-final states
     if DOUBLE_DQN:
-        next_state_values[non_final_mask] = targets[:, next_preds.argmax(dim=1)[0]]
+        next_actions = next_preds.argmax(dim=1).unsqueeze(1)
+        next_state_values[non_final_mask] = targets.gather(1, next_actions).squeeze()
     else:
         next_state_values[non_final_mask] = targets.max(1)[0].detach()
     if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
         print(f'DEBUG: next_state_action_values shape: {next_state_values.shape}')
         print(f'DEBUG: next_state_action_values[0]: {next_state_values[0]}')
         assert next_state_values.shape == (BATCH_SIZE,)
+        if DOUBLE_DQN:
+            print(f'DEBUG: next_actions shape: {next_actions.shape}')
+            print(f'DEBUG: next_actions[0]: {next_actions[0]}')
 
     # calculate the discounted expected future reward
     expected_state_action_values = (next_state_values*GAMMA) + reward_batch
@@ -221,6 +239,7 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
     opponent = select_opponent(OPPONENT_TYPE)
 
     # assign red/blue randomly
+    '''
     player = ''
     opp_color = ''
     if np.random.rand() < 0.5:
@@ -229,28 +248,31 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
         player = 'red'
         opp_color = 'blue'
     else:
-        game.set_player(opponent)
-        game.set_player(agent)
-        player = 'blue'
-        opp_color = 'red'
+    '''
+    game.set_player(opponent)
+    game.set_player(agent)
+    player = 'blue'
+    #opp_color = 'red'
     result = 'continue'
 
     # set up states and next states
     state = torch.tensor(game.state.to_numpy(color_pref=player), device=device).unsqueeze(0)
-    mirror_state = torch.tensor(game.state.to_numpy(color_pref=opp_color), device=device).unsqueeze(0)
-    prev_state = state
-    mirror_prev_state = mirror_state
+    #mirror_state = torch.tensor(game.state.to_numpy(color_pref=opp_color), device=device).unsqueeze(0)
+    #prev_state = state
+    #mirror_prev_state = mirror_state
     next_state = None
-    mirror_next_state = None
+    #mirror_next_state = None
     while result == 'continue':
         # take a step of the game
         blue_action, red_action, result = game.step()
-        if player == 'blue':
-            action = blue_action
-            if red_action == -1:
-                mirror_state = mirror_prev_state
-            else:
-                mirror_action = red_action
+        #if player == 'blue':
+        action = blue_action
+            #if red_action == -1:
+                #mirror_state = mirror_prev_state
+            #else:
+        
+            # mirror_action = red_action
+        '''
         else:
             # red_action could be -1 if all nodes are colored
             # before red gets to select (just keep previous action and rollback state)
@@ -258,21 +280,23 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
                 state = prev_state
             else:
                 action = red_action
-            mirror_action = blue_action
+            #mirror_action = blue_action
+        '''
         # get immediate reward
         reward = 0.0
         if result == 'red' or result == 'blue':
             red_nodes = len(game.state.get_nodes(color='red'))
             blue_nodes = len(game.state.get_nodes(color='blue'))
-            if player == 'blue':
-                reward = blue_nodes - red_nodes
+            reward = blue_nodes - red_nodes
+            '''
             elif player == 'red':
                 reward = red_nodes - blue_nodes
+            '''
         accumulated_reward += reward
-        mirror_reward = -reward
+        #mirror_reward = -reward
         # convert to tensors
         reward = torch.tensor([reward], device=device)
-        mirror_reward = torch.tensor([mirror_reward], device=device)
+        #mirror_reward = torch.tensor([mirror_reward], device=device)
         if DEBUG_MODE:
             invalid_actions = torch.diagonal(state, dim1=1, dim2=2).nonzero()[:,1]
             if I_EPISODE % DEBUG_OFFSET == 0:
@@ -288,7 +312,7 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
             assert reward.shape == (1,)
 
         action = torch.tensor([[action]], device=device, dtype=torch.int64)
-        mirror_action = torch.tensor([[mirror_action]], device=device, dtype=torch.int64)
+        #mirror_action = torch.tensor([[mirror_action]], device=device, dtype=torch.int64)
         if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
             print(f'DEBUG: action shape: {action.shape}')
             print(f'DEBUG: action[0]: {action[0]}')
@@ -306,11 +330,11 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
         if result == 'continue':
             next_state = torch.tensor(game.state.to_numpy(color_pref=player),
                                       device=device).unsqueeze(0)
-            mirror_next_state = torch.tensor(game.state.to_numpy(color_pref=opp_color),
-                                             device=device).unsqueeze(0)
+            #mirror_next_state = torch.tensor(game.state.to_numpy(color_pref=opp_color),
+            #                                 device=device).unsqueeze(0)
         else:
             next_state = None
-            mirror_next_state = None
+            #mirror_next_state = None
         if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
             print(f'DEBUG: state shape: {state.shape}')
             print(f'DEBUG: state: {state}')
@@ -327,12 +351,12 @@ for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
 
         # add transition to replay memory
         memory.push(state, action, next_state, reward)
-        memory.push(mirror_state, mirror_action, mirror_next_state, mirror_reward)
+        #memory.push(mirror_state, mirror_action, mirror_next_state, mirror_reward)
         # move to next state
-        prev_state = state
+        #prev_state = state
         state = next_state
-        mirror_prev_state = mirror_state
-        mirror_state = mirror_next_state
+        #mirror_prev_state = mirror_state
+        #mirror_state = mirror_next_state
 
         # optimize for one step
         optimize_model()
