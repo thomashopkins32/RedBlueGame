@@ -35,13 +35,13 @@ BATCH_SIZE = 512    # sampling size from replay memory
 GAMMA = 0.75         # discount factor for estimated future rewards
 EPS_START = 0.99     # ftarting exploration probability
 EPS_END = 0.1      # ending exploration probability
-EPS_DECAY = 3000000     # rate of linear decay of exploration probability
-TARGET_UPDATE = 3000 # number of episodes between target network update
+EPS_DECAY = 200000     # rate of linear decay of exploration probability
+TARGET_UPDATE = 500 # number of episodes between target network update
 I_EPISODE = 0       # current episode number
-NUM_EPISODES = 500000 # number of games to learn from
+NUM_EPISODES = 50000 # number of games to learn from
 N = 31               # number of nodes in the game graph
 OPPONENT_TYPE = 'RandomAgent' # opponent to play against TODO: implement 'self'
-MEMORY_SIZE = 500000 # size of replay memory
+MEMORY_SIZE = 100000 # size of replay memory
 LEARNING_RATE = 0.0001 # learning rate for optimizer
 DOUBLE_DQN = True     # use Double DQN target (reduces overestimation bias)
 

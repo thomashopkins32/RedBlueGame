@@ -227,8 +227,9 @@ class DQNAgent(Agent):
             eps_thresh = self.eps_start - (self.steps_done / self.eps_decay)
             if eps_thresh < self.eps_end:
                 eps_thresh = self.eps_end
-            '''if self.steps_done % 5000 == 0:
-                print(eps_thresh)'''
+            if self.steps_done % 5000 == 0:
+                print(eps_thresh)
+                print(self.steps_done)
             self.steps_done += 1
             if sample > eps_thresh:
                 with torch.no_grad():
