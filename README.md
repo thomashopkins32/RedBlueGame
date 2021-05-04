@@ -17,6 +17,9 @@ Game for CSCI-4150 at RPI to experiment with artificial intelligence
 ## Notes
    Any player who does not answer in time automatically loses.
    If all nodes are colored, then the game immediately ends and whomever with more nodes wins.
+   
+## Example Game 
+![game image](https://github.com/thomashopkins32/RedBlueGame/blob/main/example.png)
 
 ## Contributing
 To create your agent open a pull request and edit the `RedBlueGame/agents.py` file. Next, set up your own agent class like this:
