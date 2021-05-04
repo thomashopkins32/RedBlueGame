@@ -10,8 +10,6 @@ Note:
 import numpy as np
 import torch
 
-import pdb
-import time
 import copy
 import math
 
@@ -66,7 +64,9 @@ class TimeoutAgent(Agent):
         self.name = 'TimeoutAgent'
 
     def get_action(self, state, player):
-        time.sleep(1000000)
+        while True:
+            pass
+        return 0
 
 
 class GreedyAgent(Agent):
@@ -194,7 +194,7 @@ class DQNAgent(Agent):
     otherwise it will have random parameters.
     '''
     def __init__(self, n, network_param_file='', training=False, eps_end=0.05, eps_start=0.9,
-                 eps_decay=200, device='cpu', model='ffn'):
+                 eps_decay=200, device='cpu'):
         super(DQNAgent, self).__init__()
         self.name = 'DQNAgent'
         self.n = n
@@ -220,17 +220,12 @@ class DQNAgent(Agent):
         # get valid actions
         if self.training:
             sample = np.random.rand()
-            '''
-            eps_thresh = self.eps_end + (self.eps_start - self.eps_end) * \
-                math.exp(-1.0 * self.steps_done / self.eps_decay)
-            '''
+            # linear decay
             eps_thresh = self.eps_start - (self.steps_done / self.eps_decay)
             if eps_thresh < self.eps_end:
                 eps_thresh = self.eps_end
-            if self.steps_done % 5000 == 0:
-                print(eps_thresh)
-                print(self.steps_done)
             self.steps_done += 1
+            # choose best known move
             if sample > eps_thresh:
                 with torch.no_grad():
                     action_dist = self.model(s).detach()[0]
@@ -238,6 +233,7 @@ class DQNAgent(Agent):
                     mask[possible_actions] = 0
                     action_dist[mask] = float('-inf')
                     action = torch.argmax(action_dist).item()
+            # choose move randomly
             else:
                 action = np.random.choice(possible_actions)
         else:

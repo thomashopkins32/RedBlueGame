@@ -24,9 +24,9 @@ from game import Game
 from models import DQFFN, ReplayMemory, Transition
 
 
-DEBUG_MODE = False
+DEBUG_MODE = True
 if DEBUG_MODE:
-    DEBUG_OFFSET = 1500
+    DEBUG_OFFSET = 100
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -39,7 +39,7 @@ EPS_DECAY = 200000     # rate of linear decay of exploration probability
 TARGET_UPDATE = 500 # number of episodes between target network update
 I_EPISODE = 0       # current episode number
 NUM_EPISODES = 50000 # number of games to learn from
-N = 31               # number of nodes in the game graph
+N = 5               # number of nodes in the game graph
 OPPONENT_TYPE = 'RandomAgent' # opponent to play against TODO: implement 'self'
 MEMORY_SIZE = 100000 # size of replay memory
 LEARNING_RATE = 0.0001 # learning rate for optimizer
@@ -77,7 +77,8 @@ def select_opponent(op_type):
 
 
 # define agents and networks
-agent = DQNAgent(N, training=True, eps_start=EPS_START, eps_end=EPS_END, eps_decay=EPS_DECAY, device=device)
+agent = DQNAgent(N, training=True, eps_start=EPS_START, eps_end=EPS_END,
+                 eps_decay=EPS_DECAY, device=device)
 policy_net = agent.model.to(device)
 target_net = DQFFN(N).to(device)
 target_net.load_state_dict(policy_net.state_dict())
@@ -230,133 +231,89 @@ def optimize_model():
         param.grad.data.clamp_(-1, 1)
     optimizer.step()
 
+def to_tensors(state, action, reward, end, player):
+    reward = torch.tensor([reward], device=device)
+    if DEBUG_MODE:
+        invalid_actions = torch.diagonal(state, dim1=1, dim2=2).nonzero()[:,1]
+        if I_EPISODE % DEBUG_OFFSET == 0:
+            print(f'DEBUG: player: {player}')
+            print(f'DEBUG: state: {state}')
+            print(f'DEBUG: action taken: {action}')
+            print(f'DEBUG: reward: {reward}')
+            print(f'DEBUG: invalid_actions: {invalid_actions}')
+        assert not action in invalid_actions
+
+    action = torch.tensor([[action]], device=device, dtype=torch.int64)
+    if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
+        print(f'DEBUG: action shape: {action.shape}')
+        print(f'DEBUG: action[0]: {action[0]}')
+        assert action.shape == (1,1)
+
+    # observe new state
+    if not end:
+        next_state = torch.tensor(game.state.to_numpy(color_pref=player),
+                                  device=device).unsqueeze(0)
+    else:
+        next_state = None
+    if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
+        print(f'DEBUG: state shape: {state.shape}')
+        print(f'DEBUG: state: {state}')
+        if not end:
+            print(f'DEBUG: next_state shape: {next_state.shape}')
+            print(f'DEBUG: next_state: {next_state}')
+            assert next_state.shape == (1, N, N)
+            # if this fails then an invalid action was taken
+            # or states aren't being generated correctly
+            assert not torch.equal(state, next_state)
+        else:
+            assert next_state is None
+        assert state.shape == (1, N, N)
+
+    return action, next_state, reward
+
 # training loop
 accumulated_reward = 0
 for I_EPISODE in tqdm(range(NUM_EPISODES), total=NUM_EPISODES):
 
     # create new game and opponent
-    game = Game(N, 10, 10, verbose=False)
+    game = Game(N, 10, 30, verbose=False)
     opponent = select_opponent(OPPONENT_TYPE)
 
     # assign red/blue randomly
-    '''
     player = ''
-    opp_color = ''
+    opp = ''
+    end = False
     if np.random.rand() < 0.5:
-        game.set_player(agent) # red player
         game.set_player(opponent) # blue player
+        game.set_player(agent) # red player
         player = 'red'
-        opp_color = 'blue'
+        opp = 'blue'
+        # since blue player goes first and we are training the red player
+        # we should advance to red player's turn so state/action pairs are accurate
+        _, _, end = game.step(opp)
     else:
-    '''
-    game.set_player(opponent)
-    game.set_player(agent)
-    player = 'blue'
-    #opp_color = 'red'
-    result = 'continue'
-
+        game.set_player(agent)
+        game.set_player(opponent)
+        player = 'blue'
+        opp = 'red'
     # set up states and next states
     state = torch.tensor(game.state.to_numpy(color_pref=player), device=device).unsqueeze(0)
-    #mirror_state = torch.tensor(game.state.to_numpy(color_pref=opp_color), device=device).unsqueeze(0)
-    #prev_state = state
-    #mirror_prev_state = mirror_state
     next_state = None
-    #mirror_next_state = None
-    while result == 'continue':
-        # take a step of the game
-        blue_action, red_action, result = game.step()
-        #if player == 'blue':
-        action = blue_action
-            #if red_action == -1:
-                #mirror_state = mirror_prev_state
-            #else:
-        
-            # mirror_action = red_action
-        '''
-        else:
-            # red_action could be -1 if all nodes are colored
-            # before red gets to select (just keep previous action and rollback state)
-            if red_action == -1:
-                state = prev_state
-            else:
-                action = red_action
-            #mirror_action = blue_action
-        '''
-        # get immediate reward
-        reward = 0.0
-        if result == 'red' or result == 'blue':
-            red_nodes = len(game.state.get_nodes(color='red'))
-            blue_nodes = len(game.state.get_nodes(color='blue'))
-            reward = blue_nodes - red_nodes
-            '''
-            elif player == 'red':
-                reward = red_nodes - blue_nodes
-            '''
+    while not end:
+        # need action from player's step (reward if game over)
+        action, reward, end = game.step(player)
+        # need reward after opponent's response
+        if not end:
+            _, reward, end = game.step(opp)
+            reward = -reward
+
         accumulated_reward += reward
-        #mirror_reward = -reward
-        # convert to tensors
-        reward = torch.tensor([reward], device=device)
-        #mirror_reward = torch.tensor([mirror_reward], device=device)
-        if DEBUG_MODE:
-            invalid_actions = torch.diagonal(state, dim1=1, dim2=2).nonzero()[:,1]
-            if I_EPISODE % DEBUG_OFFSET == 0:
-                print(f'DEBUG: player: {player}')
-                print(f'DEBUG: state: {state}')
-                print(f'DEBUG: action taken: {action}')
-                print(f'DEBUG: invalid_actions: {invalid_actions}')
-            assert not action in invalid_actions
-        if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
-            print(f'DEBUG: player: {player}')
-            print(f'DEBUG: reward shape: {reward.shape}')
-            print(f'DEBUG: reward[0]: {reward[0]}')
-            assert reward.shape == (1,)
-
-        action = torch.tensor([[action]], device=device, dtype=torch.int64)
-        #mirror_action = torch.tensor([[mirror_action]], device=device, dtype=torch.int64)
-        if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
-            print(f'DEBUG: action shape: {action.shape}')
-            print(f'DEBUG: action[0]: {action[0]}')
-            assert action.shape == (1,1)
-
-        # TODO: generate mirrored transition
-        # if player is red generate (s,a,s',r) as if he was playing blue and took blue action
-        # this might be an issue since he didn't choose blue action
-        # good for exploration bad for exploitation (could lead to divergence if used in later
-        # steps of training) i.e. only use for I_EPISODE < NUM_EPISODES//2
-        # this can also be tuned
-
-
-        # observe new state
-        if result == 'continue':
-            next_state = torch.tensor(game.state.to_numpy(color_pref=player),
-                                      device=device).unsqueeze(0)
-            #mirror_next_state = torch.tensor(game.state.to_numpy(color_pref=opp_color),
-            #                                 device=device).unsqueeze(0)
-        else:
-            next_state = None
-            #mirror_next_state = None
-        if DEBUG_MODE and I_EPISODE % DEBUG_OFFSET == 0:
-            print(f'DEBUG: state shape: {state.shape}')
-            print(f'DEBUG: state: {state}')
-            if result == 'continue':
-                print(f'DEBUG: next_state shape: {next_state.shape}')
-                print(f'DEBUG: next_state: {next_state}')
-                assert next_state.shape == (1, N, N)
-                # if this fails then an invalid action was taken
-                # or states aren't being generated correctly
-                assert not torch.equal(state, next_state)
-            else:
-                assert next_state is None
-            assert state.shape == (1, N, N)
+        action, next_state, reward = to_tensors(state, action, reward, end, player)
 
         # add transition to replay memory
         memory.push(state, action, next_state, reward)
-        #memory.push(mirror_state, mirror_action, mirror_next_state, mirror_reward)
         # move to next state
-        #prev_state = state
         state = next_state
-        #mirror_prev_state = mirror_state
-        #mirror_state = mirror_next_state
 
         # optimize for one step
         optimize_model()

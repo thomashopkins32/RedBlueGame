@@ -48,9 +48,7 @@ class DQFFN(nn.Module):
         # input is flattened upper triangle (diagonal included) of
         # state adjacency matrix
         self.l1 = nn.Linear(n*(n+1)//2, 2048)
-        #self.bn1 = nn.BatchNorm1d(128)
         self.l2 = nn.Linear(2048, 1024)
-        #self.bn2 = nn.BatchNorm1d(64)
         self.l3 = nn.Linear(1024, n)
 
     def forward(self, x):

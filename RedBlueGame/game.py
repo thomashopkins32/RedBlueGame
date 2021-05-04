@@ -31,16 +31,16 @@ from graph import Graph
 
 class TimeoutException(Exception): pass
 
-#@contextmanager
-#def time_limit(seconds):
-#    def signal_handler(signum, frame):
-#        raise TimeoutException('Timed out!')
-#    signal.signal(signal.SIGALRM, signal_handler)
-#    signal.alarm(seconds)
-#    try:
-#        yield
-#    finally:
-#        signal.alarm(0)
+@contextmanager
+def time_limit(seconds):
+    def signal_handler(signum, frame):
+        raise TimeoutException('Timed out!')
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
 
 
 class Game:
@@ -78,15 +78,15 @@ class Game:
         self.t = t
         self.state = Graph(n)
         self.round = 0
-        self.turn = 'blue'
         self.players = {'red': None, 'blue': None}
         self.verbose = verbose
 
     def set_player(self, agent):
-        if self.players['red'] is None:
-            self.players['red'] = agent
-        elif self.players['blue'] is None:
+        ''' Set players in the game '''
+        if self.players['blue'] is None:
             self.players['blue'] = agent
+        elif self.players['red'] is None:
+            self.players['red'] = agent
         else:
             print('Already two players...')
 
@@ -111,65 +111,57 @@ class Game:
         for n in neighbors:
             self.state.set_node_attrs(n, {'color': player})
 
-    def get_possible_actions(self):
-        ''' Returns a list of possible actions (node numbers) '''
-        return self.state.get_nodes(color='grey')
+    def get_score(self):
+        ''' Calculates a returns the score of the game '''
+        blue_nodes = len(self.state.get_nodes(color='blue'))
+        red_nodes = len(self.state.get_nodes(color='red'))
+        return blue_nodes, red_nodes
 
-    def determine_winner(self):
-        self.points = {}
-        self.points['blue'] = len(self.state.get_nodes(color='blue'))
-        self.points['red'] = len(self.state.get_nodes(color='red'))
-        if self.points['blue'] > self.points['red']:
-            self._print(f'Blue wins with scores {self.points}')
-            return 'blue'
-        elif self.points['red'] > self.points['blue']:
-            self._print(f'Red wins with scores {self.points}')
-            return 'red'
-        self._print(f'Game tied with scores {self.points}')
-        return 'tied'
+    def get_reward(self, player):
+        ''' Gets the reward for a player after taking an action '''
+        blue, red = self.get_score()
+        if player == 'blue':
+            return blue - red
+        return red - blue
 
-    def step(self):
+    def step(self, player):
         '''
-        Process one round of the game
+        Process one player's turn in the game
+
+        Parameters
+        ----------
+        player : str
+            color of the player ['blue', 'red']
 
         Returns
         -------
-        blue_action : int
-            node that the blue player chose to color
-        red_action : int
-            node that the red player chose to color, -1 if game ended
-        result : str
-            one of ('continue', 'tied', 'red', 'blue')
+        action : int
+            node that the player chose to color
+        reward : int
+            difference in score if game ended otherwise 0.0
+            blue_nodes - red_nodes if player is blue
+            red_nodes - blue_nodes if player is red
         '''
-        self._print(f'Blue player {self.players["blue"]} is choosing a node to color')
+        self._print(f'{player}  player {self.players[player]} is choosing a node to color')
         try:
-            #with time_limit(self.t):
-            blue_action = self.players['blue'].get_action(self.state, 'blue')
-            self.perform_action('blue', blue_action)
+            with time_limit(self.t):
+                action = self.players[player].get_action(self.state, player)
+            self.perform_action(player, action)
         except TimeoutException as e:
-            self._print('Blue player timed out! Blue loses the game!')
-            return blue_action, -1, 'red'
-        self._print(f'Blue player chose {blue_action}')
+            self._print(f'{player} player timed out! {player} loses the game!')
+            return action, self.get_reward(player), True
+        self._print(f'{player} player chose {action}')
         if len(self.state.get_nodes(color='grey')) == 0:
             self._print('All nodes have been colored.')
-            return blue_action, -1, self.determine_winner()
-        self._print(f'Red player {self.players["red"]} is choosing a node to color')
-        try:
-            #with time_limit(self.t):
-            red_action = self.players['red'].get_action(self.state, 'red')
-            self.perform_action('red', red_action)
-        except TimeoutException as e:
-            self._print('Red player timed out! Red loses the game!')
-            return blue_action, red_action, 'blue'
-        self._print(f'Red player chose {red_action}')
-        if len(self.state.get_nodes(color='grey')) == 0:
-            self._print('All nodes have been colored.')
-            return blue_action, red_action, self.determine_winner()
-        self.round += 1
+            return action, self.get_reward(player), True
+        # red always ends the round
+        if player == 'red':
+            self.round += 1
+        # check if round limit has been reached
         if self.round == self.r:
             self._print('Max number of rounds has been reached.')
-            return blue_action, red_action, self.determine_winner()
-        return blue_action, red_action, 'continue'
+            return action, self.get_reward(player), True
+        return action, 0.0, False
 
     def run(self):
         ''' Starts the main game loop (returns the winning player) '''
@@ -178,15 +170,15 @@ class Game:
             return ''
         if self.verbose:
             self.state.show()
-        result = 'continue'
+        end = False
         winner = ''
-        while result == 'continue':
+        while not end:
             self._print('=====================================================================')
             self._print(f'Starting round {self.round+1}')
-            _, _, result = self.step()
-            if result != 'continue':
-                winner = result
+            _, _, end = self.step('blue')
+            if end:
                 break
+            _, _, end = self.step('red')
             self._print(f'Game after round {self.round}:')
             if self.verbose:
                 self.state.show()
@@ -194,6 +186,14 @@ class Game:
         self._print(f'Game has ended after {self.round} rounds')
         if self.verbose:
             self.state.show()
+        blue, red = self.get_score()
+        if blue > red:
+            winner = 'blue'
+        elif red > blue:
+            winner = 'red'
+        else:
+            winner = 'tied'
+        self._print(f'Winner is {winner} with scores\nblue: {blue}\nred: {red}')
         return winner
 
 
@@ -202,6 +202,6 @@ if __name__=='__main__':
                         DifferenceAgent, MiniMaxAgent, DQNAgent)
     n = int(sys.argv[1])
     game = Game(n, 10, 10)
+    game.set_player(DifferenceAgent())
     game.set_player(GreedyAgent())
-    game.set_player(DQNAgent(n, network_param_file=sys.argv[2]))
     game.run()

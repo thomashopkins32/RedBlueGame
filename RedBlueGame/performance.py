@@ -13,7 +13,7 @@ from game import Game
 
 # note: MiniMaxAgent is currently too slow to test
 
-def assign_player(player):
+def assign_player(player, n):
     if player == 'RandomAgent':
         return RandomAgent()
     elif player == 'GreedyAgent':
@@ -23,29 +23,36 @@ def assign_player(player):
     elif player == 'MiniMaxAgent':
         return MiniMaxAgent(depth=2)
     elif player == 'DQNAgent':
-        #return DQNAgent(51)
-        return DQNAgent(31, network_param_file=sys.argv[4])
+        if len(sys.argv) < 6:
+            return DQNAgent(n)
+        return DQNAgent(n, network_param_file=sys.argv[5])
     return None
 
-num_games = int(sys.argv[1])
-player1 = sys.argv[2]
-player2 = sys.argv[3]
-p1 = assign_player(player1)
-p2 = assign_player(player2)
+if len(sys.argv) < 5:
+    print('ERROR: Invalid argument(s)')
+    print('USAGE: python performance.py <game-size> <num-games> <player1> <player2> [<saved-model>]')
+    quit()
+
+n = int(sys.argv[1])
+num_games = int(sys.argv[2])
+player1 = sys.argv[3]
+player2 = sys.argv[4]
+p1 = assign_player(player1, n)
+p2 = assign_player(player2, n)
 print(f'Simulating {num_games} games for {p1} vs {p2}')
 p1_wins = 0
 p2_wins = 0
 ties = 0
 for i in tqdm(range(num_games), total=num_games):
-    game = Game(31, 25, 10, verbose=False)
-    #if np.random.rand() < 0.5:
-    game.set_player(p2)
-    game.set_player(p1)
-    players = {'blue': 'p1', 'red': 'p2'}
-    #else:
-     #   game.set_player(p1)
-      #  game.set_player(p2)
-       # players = {'blue': 'p2', 'red': 'p1'}
+    game = Game(n, 25, 60, verbose=False)
+    if np.random.rand() < 0.5:
+        game.set_player(p1)
+        game.set_player(p2)
+        players = {'blue': 'p1', 'red': 'p2'}
+    else:
+        game.set_player(p1)
+        game.set_player(p2)
+        players = {'blue': 'p2', 'red': 'p1'}
     winner = game.run()
     if winner == '':
         ties += 1
